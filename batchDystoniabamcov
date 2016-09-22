@@ -1,0 +1,41 @@
+#!/bin/bash
+
+#defines input and output directories
+Indir=$1
+Outdir=$2
+
+#creates output directory
+mkdir "$Outdir" 
+
+#creates filename from basename
+for fn in "$Indir"/*.bam
+do 
+    bn=$(basename "$fn")
+    
+    nn=$(echo $bn | awk -F '_' '{print $1"_"$2"_"$3}')
+
+echo -n processing $nn
+
+#creates a coverage bedfile using bedtools (also reports areas of zero coverage)
+genomeCoverageBed -bga -ibam "$fn" > $nn.genomecoverage.bed
+
+echo -n "."
+
+#intersects the bedfile with the specified genes of intrest for the panel so only coverage for genes on the panel are returned
+intersectBed -wb -a $nn.genomecoverage.bed -b DystoniaGenes.bed > genecov.$nn.bed
+
+echo -n "."
+
+cat genecov.$nn.bed | awk '{if($4 < 30)print}' | mergeBed > $Outdir/$nn.lowcoverage.bed 
+
+echo -n "."
+
+#uses akw to return the percentage of each that is covered at 30x or over and saves the file to the output directory
+cat genecov.$nn.bed | uniq | awk awk '{bases=$3-$2; total[$8]+=bases; if ($4 >= 30) {good[$8]+=bases}} END {for (gene in good) print gene"\t" good[gene]/total[gene]*100}'> $Outdir/genecoverage.$nn.txt
+
+echo ".done"
+
+#removes intermediate files
+rm $nn.genomecoverage.bed genecov.$nn.bed
+
+done
